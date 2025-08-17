@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'metro-timetable'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['10.138.222.96:8080'] # or 'localhost:8080' if not using Docker
+  - job_name: 'discord-bot'
+    static_configs:
+      - targets: ['10.138.222.96:8000'] # or 'localhost:8080' if not using Docker
