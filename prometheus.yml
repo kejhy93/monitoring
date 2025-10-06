@@ -9,3 +9,7 @@ scrape_configs:
   - job_name: 'discord-bot'
     static_configs:
       - targets: ['host.docker.internal:8000'] # or 'localhost:8080' if not using Docker
+  - job_name: 'n8n'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:5678'] # or 'localhost:8080' if not using Docker
