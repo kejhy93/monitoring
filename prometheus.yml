@@ -13,3 +13,8 @@ scrape_configs:
     metrics_path: '/metrics'
     static_configs:
       - targets: ['host.docker.internal:5678'] # or 'localhost:8080' if not using Docker
+  - job_name: 'plex'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['localhost:9000']
+
