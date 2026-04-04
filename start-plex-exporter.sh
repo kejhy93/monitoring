@@ -124,7 +124,6 @@ if [[ "${START_MINIKUBE:-true}" == "true" ]]; then
   bash "${SCRIPT_DIR}/start-minikube.sh"
 fi
 
-# --- Check Prometheus & Grafana are deployed in k8s ---
 echo "--- Monitoring Stack ---"
 NOT_READY=()
 
