@@ -122,3 +122,36 @@ print_status
 echo "--- Minikube ---"
 bash "${SCRIPT_DIR}/start-minikube.sh"
 
+# --- Check Prometheus & Grafana are deployed in k8s ---
+echo "--- Monitoring Stack ---"
+NOT_READY=()
+
+check_deployment() {
+  local label="$1" name="$2"
+  local ready total
+  ready=$(kubectl get pods -n monitoring -l "$label" --no-headers 2>/dev/null \
+    | grep -c "Running" || true)
+  total=$(kubectl get pods -n monitoring -l "$label" --no-headers 2>/dev/null \
+    | wc -l | tr -d ' ')
+  if [[ "$total" -eq 0 ]]; then
+    NOT_READY+=("$name (no pods found)")
+  elif [[ "$ready" -lt "$total" ]]; then
+    NOT_READY+=("$name ($ready/$total pods running)")
+  else
+    echo "  [OK] $name ($ready/$total pods running)"
+  fi
+}
+
+check_deployment "app.kubernetes.io/name=prometheus"  "Prometheus"
+check_deployment "app.kubernetes.io/name=grafana"     "Grafana"
+
+if [[ ${#NOT_READY[@]} -gt 0 ]]; then
+  echo
+  echo "WARNING: The following monitoring components are not ready:"
+  for item in "${NOT_READY[@]}"; do
+    echo "  - $item"
+  done
+  echo "  Run: bash ${SCRIPT_DIR}/k8s/deploy.sh --env local"
+  echo
+fi
+
