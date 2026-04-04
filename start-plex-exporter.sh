@@ -160,4 +160,3 @@ if [[ ${#NOT_READY[@]} -gt 0 ]]; then
   echo "  Run: bash ${SCRIPT_DIR}/k8s/deploy.sh --env local"
   echo
 fi
-
