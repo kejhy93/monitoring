@@ -11,6 +11,8 @@ Prometheus + Grafana deployed in minikube (kube-prometheus-stack Helm chart), Pl
 | Plex | Podman pod `plexpod` | `start-plex-exporter.sh` (GPU passthrough via `GPU_TYPE`) |
 | plex-exporter | Podman pod `plexpod` (sidecar) | `ghcr.io/jsclayton/prometheus-plex-exporter` |
 | Seagate (media) | Host at `/var/mnt/seagate` | `fix-seagate-mount.sh` (NTFS, mounted into Plex at `/seagate`) |
+| Plex | Podman pod `plexpod` | `start-plex-exporter.sh` |
+| plex-exporter | Podman pod `plexpod` (sidecar) | `ghcr.io/jsclayton/prometheus-plex-exporter` |
 
 ## Accessing UIs
 
@@ -85,6 +87,11 @@ bash fix-seagate-mount.sh
 Defaults: `MOUNT_POINT=/var/mnt/seagate`, `UUID=A260323360320E93`, `PLEX_CONTAINER=plex`. Override any via environment variables.
 
 Steps: lazy-unmounts stale mount → `ntfsfix` → systemd remount → restart/start the Plex container.
+=======
+1. Adds prometheus-community Helm repo and installs kube-prometheus-stack
+2. Waits for pods to be ready
+3. Applies `k8s/plex-dashboard.yaml` (Grafana dashboard ConfigMap)
+4. Applies `k8s/grafana-ingress.yaml` (prod only)
 
 ## Plex scrape config
 
