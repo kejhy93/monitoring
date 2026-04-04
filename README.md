@@ -13,6 +13,7 @@ Prometheus + Grafana deployed in minikube (kube-prometheus-stack Helm chart), Pl
 | Seagate (media) | Host at `/var/mnt/seagate` | `fix-seagate-mount.sh` (NTFS, mounted into Plex at `/seagate`) |
 | Plex | Podman pod `plexpod` | `start-plex-exporter.sh` |
 | plex-exporter | Podman pod `plexpod` (sidecar) | `ghcr.io/jsclayton/prometheus-plex-exporter` |
+| Seagate (media) | Host at `/var/mnt/seagate` | `fix-seagate-mount.sh` (NTFS, mounted into Plex at `/seagate`) |
 
 ## Accessing UIs
 
@@ -92,6 +93,53 @@ Steps: lazy-unmounts stale mount → `ntfsfix` → systemd remount → restart/s
 2. Waits for pods to be ready
 3. Applies `k8s/plex-dashboard.yaml` (Grafana dashboard ConfigMap)
 4. Applies `k8s/grafana-ingress.yaml` (prod only)
+5. For `--env local`: automatically starts `kubectl port-forward` on `http://localhost:3000` (loops on disconnect)
+
+## Helper scripts
+
+### `start-plex-exporter.sh`
+
+Starts the `plexpod` Podman pod (Plex + plex-exporter). Idempotent — skips creation of any pod or container that already exists.
+
+```bash
+bash start-plex-exporter.sh
+```
+
+GPU passthrough is controlled by `GPU_TYPE` (default: `vaapi`):
+
+```bash
+GPU_TYPE=vaapi   bash start-plex-exporter.sh   # Intel/AMD via /dev/dri
+GPU_TYPE=nvidia  bash start-plex-exporter.sh   # NVIDIA devices
+GPU_TYPE=none    bash start-plex-exporter.sh   # no GPU
+```
+
+The Seagate external drive is mounted into the Plex container at `/seagate` (host path: `/var/mnt/seagate`).
+
+After starting the pod, the script optionally starts minikube and checks that Prometheus and Grafana pods are ready. This is on by default; disable with:
+
+```bash
+START_MINIKUBE=false bash start-plex-exporter.sh
+```
+
+### `start-minikube.sh`
+
+Starts minikube with the Podman driver and containerd runtime. If the normal start fails, it automatically recovers by deleting the broken profile, removing orphaned Podman volumes, and starting fresh.
+
+```bash
+bash start-minikube.sh
+```
+
+### `fix-seagate-mount.sh`
+
+Fixes a dirty/stale NTFS Seagate mount and restarts Plex so it picks up the volume.
+
+```bash
+bash fix-seagate-mount.sh
+```
+
+Defaults: `MOUNT_POINT=/var/mnt/seagate`, `UUID=A260323360320E93`, `PLEX_CONTAINER=plex`. Override any via environment variables.
+
+Steps: lazy-unmounts stale mount → `ntfsfix` → systemd remount → restart/start the Plex container.
 
 ## Plex scrape config
 
