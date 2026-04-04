@@ -13,7 +13,12 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --env) ENV="$2"; shift 2 ;;
+    --env)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --env requires a value (local|prod)"
+        usage
+      fi
+      ENV="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -29,7 +34,7 @@ if [[ "$ENV" == "prod" && -f /etc/rancher/k3s/k3s.yaml && -z "${KUBECONFIG:-}" ]
 fi
 
 echo "==> Adding prometheus-community helm repo..."
-if ! helm repo list | grep -q "^prometheus-community\b"; then
+if ! helm repo list | awk 'NR>1 {print $1}' | grep -qx "prometheus-community"; then
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 fi
 helm repo update

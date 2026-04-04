@@ -118,11 +118,17 @@ echo
 echo "Plex pod started successfully!"
 print_status
 
-# --- Ensure minikube is running ---
-echo "--- Minikube ---"
-bash "${SCRIPT_DIR}/start-minikube.sh"
+# --- Ensure minikube is running (opt-in via START_MINIKUBE=true) ---
+if [[ "${START_MINIKUBE:-true}" == "true" ]]; then
+  echo "--- Minikube ---"
+  bash "${SCRIPT_DIR}/start-minikube.sh"
+fi
 
-# --- Check Prometheus & Grafana are deployed in k8s ---
+# --- Check Prometheus & Grafana are deployed in k8s (only when START_MINIKUBE=true) ---
+if [[ "${START_MINIKUBE:-true}" != "true" ]]; then
+  exit 0
+fi
+
 echo "--- Monitoring Stack ---"
 NOT_READY=()
 

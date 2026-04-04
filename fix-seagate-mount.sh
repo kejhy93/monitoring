@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-MOUNT_POINT="/var/mnt/seagate"
-UUID="A260323360320E93"
-PLEX_CONTAINER="plex"
+MOUNT_POINT="${MOUNT_POINT:-/var/mnt/seagate}"
+UUID="${UUID:-A260323360320E93}"
+PLEX_CONTAINER="${PLEX_CONTAINER:-plex}"
 
 echo "=== Fixing Seagate mount ==="
 
