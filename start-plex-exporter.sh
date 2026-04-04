@@ -36,9 +36,15 @@ if [[ -z "${GPU_TYPE:-}" ]]; then
     done
     if [[ "$GPU_TYPE" == "vaapi" ]]; then
       echo "Auto-detected GPU_TYPE='vaapi' (VRAM: $((best_vram / 1073741824)) GB, device: ${VAAPI_DEVICE:-/dev/dri})"
-    elif [[ -e /dev/dri ]]; then
-      GPU_TYPE="vaapi"
-      echo "Auto-detected GPU_TYPE='vaapi' (fallback)"
+    elif [[ -d /dev/dri ]]; then
+      render_node=$(find /dev/dri -maxdepth 1 -type c -name 'renderD*' 2>/dev/null | sort | head -n1)
+      if [[ -n "$render_node" ]]; then
+        VAAPI_DEVICE="$render_node"
+        GPU_TYPE="vaapi"
+        echo "Auto-detected GPU_TYPE='vaapi' (fallback, device: $VAAPI_DEVICE)"
+      else
+        echo "Auto-detected GPU_TYPE='none'"
+      fi
     else
       echo "Auto-detected GPU_TYPE='none'"
     fi
@@ -148,40 +154,40 @@ echo
 echo "Plex pod started successfully!"
 print_status
 
-# --- Ensure minikube is running (opt-in via START_MINIKUBE=true) ---
+# --- Ensure minikube is running and check monitoring stack (opt-in via START_MINIKUBE=true) ---
 if [[ "${START_MINIKUBE:-true}" == "true" ]]; then
   echo "--- Minikube ---"
   bash "${SCRIPT_DIR}/start-minikube.sh"
-fi
 
-echo "--- Monitoring Stack ---"
-NOT_READY=()
+  echo "--- Monitoring Stack ---"
+  NOT_READY=()
 
-check_deployment() {
-  local label="$1" name="$2"
-  local ready total
-  ready=$(kubectl get pods -n monitoring -l "$label" --no-headers 2>/dev/null \
-    | grep -c "Running" || true)
-  total=$(kubectl get pods -n monitoring -l "$label" --no-headers 2>/dev/null \
-    | wc -l | tr -d ' ')
-  if [[ "$total" -eq 0 ]]; then
-    NOT_READY+=("$name (no pods found)")
-  elif [[ "$ready" -lt "$total" ]]; then
-    NOT_READY+=("$name ($ready/$total pods running)")
-  else
-    echo "  [OK] $name ($ready/$total pods running)"
+  check_deployment() {
+    local label="$1" name="$2"
+    local ready total
+    ready=$(kubectl get pods -n monitoring -l "$label" --no-headers 2>/dev/null \
+      | grep -c "Running" || true)
+    total=$(kubectl get pods -n monitoring -l "$label" --no-headers 2>/dev/null \
+      | wc -l | tr -d ' ')
+    if [[ "$total" -eq 0 ]]; then
+      NOT_READY+=("$name (no pods found)")
+    elif [[ "$ready" -lt "$total" ]]; then
+      NOT_READY+=("$name ($ready/$total pods running)")
+    else
+      echo "  [OK] $name ($ready/$total pods running)"
+    fi
+  }
+
+  check_deployment "app.kubernetes.io/name=prometheus"  "Prometheus"
+  check_deployment "app.kubernetes.io/name=grafana"     "Grafana"
+
+  if [[ ${#NOT_READY[@]} -gt 0 ]]; then
+    echo
+    echo "WARNING: The following monitoring components are not ready:"
+    for item in "${NOT_READY[@]}"; do
+      echo "  - $item"
+    done
+    echo "  Run: bash ${SCRIPT_DIR}/k8s/deploy.sh --env local"
+    echo
   fi
-}
-
-check_deployment "app.kubernetes.io/name=prometheus"  "Prometheus"
-check_deployment "app.kubernetes.io/name=grafana"     "Grafana"
-
-if [[ ${#NOT_READY[@]} -gt 0 ]]; then
-  echo
-  echo "WARNING: The following monitoring components are not ready:"
-  for item in "${NOT_READY[@]}"; do
-    echo "  - $item"
-  done
-  echo "  Run: bash ${SCRIPT_DIR}/k8s/deploy.sh --env local"
-  echo
 fi
