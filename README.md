@@ -8,7 +8,7 @@ Prometheus + Grafana deployed in minikube (kube-prometheus-stack Helm chart), Pl
 |---|---|---|
 | Prometheus | minikube, `monitoring` namespace | kube-prometheus-stack Helm chart |
 | Grafana | minikube, `monitoring` namespace | bundled with kube-prometheus-stack |
-| Plex | Podman pod `plexpod` | `start-plex-exporter.sh` (GPU passthrough via `GPU_TYPE`) |
+| Plex | Podman pod `plexpod` | `start-plex-exporter.sh` (GPU auto-detected; override with `GPU_TYPE`) |
 | plex-exporter | Podman pod `plexpod` (sidecar) | `ghcr.io/jsclayton/prometheus-plex-exporter` |
 | Seagate (media) | Host at `/var/mnt/seagate` | `fix-seagate-mount.sh` (NTFS, mounted into Plex at `/seagate`) |
 
@@ -50,10 +50,16 @@ Starts the `plexpod` Podman pod (Plex + plex-exporter). Idempotent — skips cre
 bash start-plex-exporter.sh
 ```
 
-GPU passthrough is controlled by `GPU_TYPE` (default: `vaapi`):
+GPU passthrough is auto-detected on startup — no configuration required in most cases:
+
+1. If `/dev/nvidia0` is present → NVIDIA mode
+2. Otherwise, all AMD/Intel cards are scanned via `/sys/class/drm/card*/device/mem_info_vram_total` and the one with the most VRAM (i.e. the discrete GPU) is selected and passed as a specific `renderD*` device
+3. Falls back to `/dev/dri` if sysfs VRAM info is unavailable
+
+Override auto-detection by setting `GPU_TYPE` explicitly:
 
 ```bash
-GPU_TYPE=vaapi   bash start-plex-exporter.sh   # Intel/AMD via /dev/dri
+GPU_TYPE=vaapi   bash start-plex-exporter.sh   # AMD/Intel via /dev/dri (or best renderD*)
 GPU_TYPE=nvidia  bash start-plex-exporter.sh   # NVIDIA devices
 GPU_TYPE=none    bash start-plex-exporter.sh   # no GPU
 ```
