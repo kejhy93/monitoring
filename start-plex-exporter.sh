@@ -14,12 +14,42 @@ PLEX_SEAGATE_DIR="/var/mnt/seagate"
 
 # --- GPU Configuration ---
 # Options: "vaapi" (Intel/AMD), "nvidia", "none"
-GPU_TYPE="${GPU_TYPE:-vaapi}"
+# Auto-detect if GPU_TYPE is not set explicitly
+VAAPI_DEVICE=""
+if [[ -z "${GPU_TYPE:-}" ]]; then
+  if [[ -e /dev/nvidia0 ]]; then
+    GPU_TYPE="nvidia"
+    echo "Auto-detected GPU_TYPE='nvidia'"
+  else
+    GPU_TYPE="none"
+    best_vram=0
+    for card_path in /sys/class/drm/card*/device; do
+      vram_file="$card_path/mem_info_vram_total"
+      [[ -f "$vram_file" ]] || continue
+      vram=$(< "$vram_file")
+      if (( vram > best_vram )); then
+        best_vram=$vram
+        render=$(ls "$card_path/drm/" 2>/dev/null | grep '^renderD' | head -1)
+        [[ -n "$render" ]] && VAAPI_DEVICE="/dev/dri/$render"
+        GPU_TYPE="vaapi"
+      fi
+    done
+    if [[ "$GPU_TYPE" == "vaapi" ]]; then
+      echo "Auto-detected GPU_TYPE='vaapi' (VRAM: $((best_vram / 1073741824)) GB, device: ${VAAPI_DEVICE:-/dev/dri})"
+    elif [[ -e /dev/dri ]]; then
+      GPU_TYPE="vaapi"
+      echo "Auto-detected GPU_TYPE='vaapi' (fallback)"
+    else
+      echo "Auto-detected GPU_TYPE='none'"
+    fi
+  fi
+fi
+GPU_TYPE="${GPU_TYPE:-none}"
 
 GPU_FLAGS=()
 case "$GPU_TYPE" in
   vaapi)
-    GPU_FLAGS=(--device /dev/dri)
+    GPU_FLAGS=(--device "${VAAPI_DEVICE:-/dev/dri}")
     ;;
   nvidia)
     GPU_FLAGS=(
