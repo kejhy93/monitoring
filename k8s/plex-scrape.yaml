@@ -1,0 +1,30 @@
+# Configures Prometheus (kube-prometheus-stack) to scrape plex-exporter running on the
+# host via Podman. 169.254.1.2 is host.containers.internal — the gateway Podman sets up
+# inside minikube so pods can reach services on the host machine.
+#
+# Step 1 — create the scrape config secret:
+#   kubectl apply -f plex-scrape.yaml
+#
+# Step 2 — patch the Prometheus CR to reference the secret (Helm-managed, use patch not apply):
+#   kubectl patch prometheus prometheus-kube-prometheus-prometheus -n monitoring \
+#     --type=merge -p '{"spec":{"additionalScrapeConfigs":{"name":"plex-additional-scrape","key":"scrape.yaml"}}}'
+#
+# Resolving the target IP (if 169.254.1.2 ever changes):
+#   The IP is the host.containers.internal gateway that Podman configures inside minikube.
+#   To look it up, SSH into the minikube node and resolve the hostname:
+#     minikube ssh "getent hosts host.containers.internal"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: plex-additional-scrape
+  namespace: monitoring
+type: Opaque
+stringData:
+  scrape.yaml: |
+    - job_name: plex
+      static_configs:
+        - targets:
+            - 169.254.1.2:9000  # host.containers.internal — Podman gateway inside minikube
+      metrics_path: /metrics
+      scrape_interval: 30s
