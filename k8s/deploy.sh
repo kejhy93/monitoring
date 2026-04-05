@@ -62,6 +62,7 @@ kubectl --namespace monitoring wait --for=condition=ready pod \
 
 echo "==> Applying Grafana dashboards..."
 kubectl apply -f "$K8S_DIR/plex-dashboard.yaml"
+kubectl apply -f "$K8S_DIR/metro-timetable-dashboard.yaml"
 
 if [[ "$ENV" == "prod" ]]; then
   echo "==> Applying Grafana Ingress..."
