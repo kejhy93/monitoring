@@ -36,11 +36,22 @@ bash k8s/deploy.sh --env prod    # k3s at hejnaluk.dev/grafana
 `deploy.sh` runs in order:
 1. Adds prometheus-community Helm repo and installs kube-prometheus-stack (using `k8s/prometheus-values.yaml`)
 2. Waits for pods to be ready
-3. Applies `k8s/plex-dashboard.yaml` (Grafana dashboard ConfigMap)
+3. Applies `k8s/plex-dashboard.yaml` and `k8s/metro-timetable-dashboard.yaml` (Grafana dashboard ConfigMaps)
 4. Applies `k8s/grafana-ingress.yaml` (prod only)
 5. For `--env local`: automatically starts `kubectl port-forward` on `http://localhost:3000` (loops on disconnect)
 
 ## Helper scripts
+
+### `dashboard-to-configmap.sh`
+
+Generates a Kubernetes ConfigMap YAML from a Grafana dashboard JSON file. The ConfigMap name and data key are derived from the filename.
+
+```bash
+bash k8s/dashboard-to-configmap.sh k8s/dashboards/plex.json            # → k8s/plex-dashboard.yaml
+bash k8s/dashboard-to-configmap.sh k8s/dashboards/metro-timetable.json # → k8s/metro-timetable-dashboard.yaml
+```
+
+Run this after editing a dashboard JSON, then `kubectl apply` the output file (or re-run `deploy.sh`).
 
 ### `start-plex-exporter.sh`
 
@@ -134,25 +145,7 @@ The Grafana sidecar (`grafana-sc-dashboard`) watches for ConfigMaps with this la
 To update the dashboard after editing `plex.json`, regenerate the ConfigMap YAML and apply:
 
 ```bash
-python3 - <<'EOF'
-import json
-with open('k8s/dashboards/plex.json') as f:
-    data = json.load(f)
-compact = json.dumps(data, separators=(',', ':'))
-yaml_content = f"""apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: plex-dashboard
-  namespace: monitoring
-  labels:
-    grafana_dashboard: "1"
-data:
-  plex.json: |-
-    {compact}
-"""
-with open('k8s/plex-dashboard.yaml', 'w') as f:
-    f.write(yaml_content)
-EOF
+bash k8s/dashboard-to-configmap.sh k8s/dashboards/plex.json
 kubectl apply -f k8s/plex-dashboard.yaml
 ```
 
@@ -181,6 +174,18 @@ kubectl apply -f k8s/plex-dashboard.yaml
 
 **Bandwidth row**
 - Estimated Transmit Bandwidth — `rate(estimated_transmit_bytes_total[2m])`
+
+## Metro Timetable Grafana dashboard
+
+Source: `k8s/dashboards/metro-timetable.json`
+Deployed as: ConfigMap `metro-timetable-dashboard` in `monitoring` namespace with label `grafana_dashboard=1`
+
+To update the dashboard after editing `metro-timetable.json`:
+
+```bash
+bash k8s/dashboard-to-configmap.sh k8s/dashboards/metro-timetable.json
+kubectl apply -f k8s/metro-timetable-dashboard.yaml
+```
 
 ### Known issue: sidecar 401 on reload
 

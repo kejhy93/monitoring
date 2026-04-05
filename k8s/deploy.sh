@@ -60,8 +60,13 @@ kubectl --namespace monitoring wait --for=condition=ready pod \
   -l "release=prometheus" \
   --timeout=120s
 
+echo "==> Generating Grafana dashboard ConfigMaps from JSON sources..."
+bash "$K8S_DIR/dashboard-to-configmap.sh" "$K8S_DIR/dashboards/plex.json"
+bash "$K8S_DIR/dashboard-to-configmap.sh" "$K8S_DIR/dashboards/metro-timetable.json"
+
 echo "==> Applying Grafana dashboards..."
 kubectl apply -f "$K8S_DIR/plex-dashboard.yaml"
+kubectl apply -f "$K8S_DIR/metro-timetable-dashboard.yaml"
 
 if [[ "$ENV" == "prod" ]]; then
   echo "==> Applying Grafana Ingress..."

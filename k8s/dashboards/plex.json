@@ -636,7 +636,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "rate(play_seconds_total{job=\"plex\"}[2m])",
+          "expr": "rate(play_seconds_total{job=\"plex\"}[$__rate_interval])",
           "legendFormat": "{{title}} — {{user}}",
           "refId": "A"
         }
@@ -806,7 +806,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "rate(estimated_transmit_bytes_total{job=\"plex\"}[2m])",
+          "expr": "rate(estimated_transmit_bytes_total{job=\"plex\"}[$__rate_interval])",
           "legendFormat": "{{server}}",
           "refId": "A"
         }

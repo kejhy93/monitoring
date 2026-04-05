@@ -16,39 +16,51 @@ PLEX_SEAGATE_DIR="/var/mnt/seagate"
 # Options: "vaapi" (Intel/AMD), "nvidia", "none"
 # Auto-detect if GPU_TYPE is not set explicitly
 VAAPI_DEVICE=""
-if [[ -z "${GPU_TYPE:-}" ]]; then
+
+detect_gpu() {
   if [[ -e /dev/nvidia0 ]]; then
     GPU_TYPE="nvidia"
     echo "Auto-detected GPU_TYPE='nvidia'"
-  else
-    GPU_TYPE="none"
-    best_vram=0
-    for card_path in /sys/class/drm/card*/device; do
-      vram_file="$card_path/mem_info_vram_total"
-      [[ -f "$vram_file" ]] || continue
-      vram=$(< "$vram_file")
-      if (( vram > best_vram )); then
-        best_vram=$vram
-        render=$(ls "$card_path/drm/" 2>/dev/null | grep '^renderD' | head -1)
-        [[ -n "$render" ]] && VAAPI_DEVICE="/dev/dri/$render"
-        GPU_TYPE="vaapi"
-      fi
-    done
-    if [[ "$GPU_TYPE" == "vaapi" ]]; then
-      echo "Auto-detected GPU_TYPE='vaapi' (VRAM: $((best_vram / 1073741824)) GB, device: ${VAAPI_DEVICE:-/dev/dri})"
-    elif [[ -d /dev/dri ]]; then
-      render_node=$(find /dev/dri -maxdepth 1 -type c -name 'renderD*' 2>/dev/null | sort | head -n1)
-      if [[ -n "$render_node" ]]; then
-        VAAPI_DEVICE="$render_node"
-        GPU_TYPE="vaapi"
-        echo "Auto-detected GPU_TYPE='vaapi' (fallback, device: $VAAPI_DEVICE)"
-      else
-        echo "Auto-detected GPU_TYPE='none'"
-      fi
-    else
-      echo "Auto-detected GPU_TYPE='none'"
+    return
+  fi
+
+  GPU_TYPE="none"
+  local best_vram=0
+  for card_path in /sys/class/drm/card*/device; do
+    local vram_file="$card_path/mem_info_vram_total"
+    [[ -f "$vram_file" ]] || continue
+    local vram
+    vram=$(< "$vram_file")
+    if (( vram > best_vram )); then
+      best_vram=$vram
+      local render
+      render=$(ls "$card_path/drm/" 2>/dev/null | grep '^renderD' | head -1)
+      [[ -n "$render" ]] && VAAPI_DEVICE="/dev/dri/$render"
+      GPU_TYPE="vaapi"
+    fi
+  done
+
+  if [[ "$GPU_TYPE" == "vaapi" ]]; then
+    echo "Auto-detected GPU_TYPE='vaapi' (VRAM: $((best_vram / 1073741824)) GB, device: ${VAAPI_DEVICE:-/dev/dri})"
+    return
+  fi
+
+  if [[ -d /dev/dri ]]; then
+    local render_node
+    render_node=$(find /dev/dri -maxdepth 1 -type c -name 'renderD*' 2>/dev/null | sort | head -n1)
+    if [[ -n "$render_node" ]]; then
+      VAAPI_DEVICE="$render_node"
+      GPU_TYPE="vaapi"
+      echo "Auto-detected GPU_TYPE='vaapi' (fallback, device: $VAAPI_DEVICE)"
+      return
     fi
   fi
+
+  echo "Auto-detected GPU_TYPE='none'"
+}
+
+if [[ -z "${GPU_TYPE:-}" ]]; then
+  detect_gpu
 fi
 GPU_TYPE="${GPU_TYPE:-none}"
 
