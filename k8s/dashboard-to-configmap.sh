@@ -27,7 +27,8 @@ fi
 
 MINIFIED="$(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), separators=(',',':')))" "$INPUT")"
 
-cat > "$OUTPUT" << YAML
+{
+  cat << YAML
 # Grafana dashboard ConfigMap — generated from $(basename "$INPUT") by $(basename "$0").
 # Applied by deploy.sh — do not apply in isolation (namespace must exist first).
 #
@@ -42,7 +43,8 @@ metadata:
     grafana_dashboard: "1"
 data:
   ${BASENAME}.json: |-
-    ${MINIFIED}
 YAML
+  printf '    %s\n' "$MINIFIED"
+} > "$OUTPUT"
 
 echo "==> Written: $OUTPUT"
