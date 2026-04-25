@@ -2686,7 +2686,7 @@
           },
           "editorMode": "code",
           "expr": "timetable_cache_trips{namespace=\"$namespace\"}",
-          "legendFormat": "Trips in Cache",
+          "legendFormat": "{{route}}",
           "range": true,
           "refId": "A"
         }
