@@ -6,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POD_NAME="plexpod"
 PLEX_IMAGE="docker.io/linuxserver/plex:latest"
 EXPORTER_IMAGE="ghcr.io/jsclayton/prometheus-plex-exporter:latest"
-PLEX_CLAIM="claim-2BQkSUa1DqtngkUbBigR" # optional
 PLEX_CONFIG_DIR="$HOME/plex/config"
 PLEX_TRANSCODE_DIR="$HOME/plex/transcode"
 PLEX_MEDIA_DIR="/mnt/data/videos"
@@ -90,6 +89,53 @@ pod_exists()       { podman pod exists "$POD_NAME" 2>/dev/null; }
 pod_running()      { [ "$(podman pod inspect "$POD_NAME" --format '{{.State}}' 2>/dev/null)" = "Running" ]; }
 container_exists() { podman container exists "$1" 2>/dev/null; }
 
+exporter_healthy() { curl -sf http://localhost:9000/metrics >/dev/null 2>&1; }
+
+recreate_exporter() {
+  fetch_plex_token
+  podman rm -f plex_exporter 2>/dev/null || true
+  echo "Creating Plex Exporter container..."
+  podman create \
+    --name plex_exporter \
+    --pod "$POD_NAME" \
+    --restart=on-failure \
+    -e PLEX_SERVER=http://localhost:32400 \
+    -e PLEX_TOKEN="$PLEX_TOKEN" \
+    "$EXPORTER_IMAGE"
+  if pod_running; then
+    podman start plex_exporter
+  fi
+}
+
+fetch_plex_token() {
+  local creds="$HOME/.plex-credentials"
+  if [[ ! -f "$creds" ]]; then
+    echo "No credentials found at $creds. Creating it now..."
+    read -p "Plex email: " PLEX_EMAIL
+    read -sp "Plex password: " PLEX_PASSWORD
+    echo
+    printf 'PLEX_EMAIL="%s"\nPLEX_PASSWORD="%s"\n' "$PLEX_EMAIL" "$PLEX_PASSWORD" > "$creds"
+    chmod 600 "$creds"
+    echo "Credentials saved to $creds"
+  else
+    # shellcheck source=/dev/null
+    source "$creds"
+  fi
+
+  PLEX_TOKEN=$(curl -s -X POST "https://plex.tv/users/sign_in.json" \
+    -H "X-Plex-Client-Identifier: monitoring-setup" \
+    -H "X-Plex-Product: plex-exporter" \
+    --data-urlencode "user[login]=$PLEX_EMAIL" \
+    --data-urlencode "user[password]=$PLEX_PASSWORD" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['user']['authentication_token'])")
+
+  if [[ -z "$PLEX_TOKEN" ]]; then
+    echo "ERROR: Failed to fetch Plex token. Check credentials in $creds" >&2
+    exit 1
+  fi
+  echo "Fetched fresh Plex token."
+}
+
 print_status() {
   local HOST_IP
   HOST_IP=$(hostname -I | awk '{print $1}')
@@ -103,13 +149,26 @@ print_status() {
 
 # --- Already running? ---
 if pod_exists && pod_running; then
-  echo "Plex pod '${POD_NAME}' is already running."
+  if ! exporter_healthy; then
+    echo "Plex pod is running but exporter is unhealthy — recreating with fresh token..."
+    recreate_exporter
+  else
+    echo "Plex pod '${POD_NAME}' is already running."
+  fi
   print_status
   exit 0
 fi
 
-# --- Create directories if missing ---
-mkdir -p "$PLEX_CONFIG_DIR" "$PLEX_TRANSCODE_DIR" "$PLEX_MEDIA_DIR"
+# --- Validate external mounts ---
+for mount_path in "$PLEX_MEDIA_DIR" "$PLEX_SEAGATE_DIR"; do
+  if ! mountpoint -q "$mount_path"; then
+    echo "ERROR: $mount_path is not mounted. Refusing to start Plex." >&2
+    exit 1
+  fi
+done
+
+# --- Create local directories if missing ---
+mkdir -p "$PLEX_CONFIG_DIR" "$PLEX_TRANSCODE_DIR"
 
 # --- Create Pod if missing ---
 if ! pod_exists; then
@@ -126,10 +185,9 @@ if ! container_exists plex; then
   echo "Creating Plex container (image: ${PLEX_IMAGE})..."
   podman create \
     --name plex \
-    --network host \
     --pod "$POD_NAME" \
+    --restart=unless-stopped \
     -e TZ="Europe/Prague" \
-    -e PLEX_CLAIM="$PLEX_CLAIM" \
     -e PUID="$(id -u)" \
     -e PGID="$(id -g)" \
     -v "$PLEX_CONFIG_DIR:/config:Z" \
@@ -142,20 +200,9 @@ else
   echo "Container 'plex' already exists, skipping creation."
 fi
 
-# --- Create Plex Exporter container if missing ---
-if ! container_exists plex_exporter; then
-  echo "Creating Plex Exporter container..."
-  podman create \
-    --name plex_exporter \
-    --network host \
-    --pod "$POD_NAME" \
-    --restart=on-failure \
-    -e PLEX_SERVER=http://localhost:32400 \
-    -e PLEX_TOKEN="$PLEX_TOKEN" \
-    "$EXPORTER_IMAGE"
-else
-  echo "Container 'plex_exporter' already exists, skipping creation."
-fi
+# --- Create Plex Exporter container (always recreate to inject fresh token) ---
+echo "Fetching Plex token..."
+recreate_exporter
 
 # --- Start Pod ---
 echo "Starting pod '${POD_NAME}'..."
