@@ -27,4 +27,4 @@ stringData:
         - targets:
             - 169.254.1.2:9000  # host.containers.internal — Podman gateway inside minikube
       metrics_path: /metrics
-      scrape_interval: 30s
+      scrape_interval: 15s
