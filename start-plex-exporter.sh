@@ -91,6 +91,17 @@ container_exists() { podman container exists "$1" 2>/dev/null; }
 
 exporter_healthy() { curl -sf http://localhost:9000/metrics >/dev/null 2>&1; }
 
+parse_json_token() {
+  if command -v python3 &>/dev/null; then
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(d['user']['authentication_token'])"
+  elif command -v jq &>/dev/null; then
+    jq -r '.user.authentication_token'
+  else
+    echo "ERROR: python3 or jq is required to parse the Plex API response." >&2
+    exit 1
+  fi
+}
+
 recreate_exporter() {
   fetch_plex_token
   podman rm -f plex_exporter 2>/dev/null || true
@@ -109,31 +120,40 @@ recreate_exporter() {
 
 fetch_plex_token() {
   local creds="$HOME/.plex-credentials"
-  if [[ ! -f "$creds" ]]; then
-    echo "No credentials found at $creds. Creating it now..."
-    read -p "Plex email: " PLEX_EMAIL
-    read -sp "Plex password: " PLEX_PASSWORD
-    echo
-    printf 'PLEX_EMAIL="%s"\nPLEX_PASSWORD="%s"\n' "$PLEX_EMAIL" "$PLEX_PASSWORD" > "$creds"
-    chmod 600 "$creds"
-    echo "Credentials saved to $creds"
-  else
+
+  # Load cached token — file stores only PLEX_TOKEN, never the password
+  if [[ -f "$creds" ]]; then
     # shellcheck source=/dev/null
     source "$creds"
   fi
 
+  if [[ -n "${PLEX_TOKEN:-}" ]]; then
+    return
+  fi
+
+  # No cached token — authenticate interactively and save only the token
+  echo "No stored token found at $creds. Authenticating with Plex.tv..."
+  local email password
+  read -p "Plex email: " email
+  read -sp "Plex password: " password
+  echo
+
   PLEX_TOKEN=$(curl -s -X POST "https://plex.tv/users/sign_in.json" \
     -H "X-Plex-Client-Identifier: monitoring-setup" \
     -H "X-Plex-Product: plex-exporter" \
-    --data-urlencode "user[login]=$PLEX_EMAIL" \
-    --data-urlencode "user[password]=$PLEX_PASSWORD" \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['user']['authentication_token'])")
+    --data-urlencode "user[login]=$email" \
+    --data-urlencode "user[password]=$password" \
+    | parse_json_token)
+  password=""  # clear from memory
 
   if [[ -z "$PLEX_TOKEN" ]]; then
-    echo "ERROR: Failed to fetch Plex token. Check credentials in $creds" >&2
+    echo "ERROR: Failed to fetch Plex token. Check your credentials." >&2
     exit 1
   fi
-  echo "Fetched fresh Plex token."
+
+  printf 'PLEX_TOKEN="%s"\n' "$PLEX_TOKEN" > "$creds"
+  chmod 600 "$creds"
+  echo "Token saved to $creds"
 }
 
 print_status() {
@@ -150,8 +170,15 @@ print_status() {
 # --- Already running? ---
 if pod_exists && pod_running; then
   if ! exporter_healthy; then
-    echo "Plex pod is running but exporter is unhealthy — recreating with fresh token..."
+    echo "Plex pod is running but exporter is unhealthy — recreating with cached token..."
     recreate_exporter
+    sleep 3
+    if ! exporter_healthy; then
+      echo "Exporter still unhealthy — cached token may be expired. Re-authenticating..."
+      rm -f "$HOME/.plex-credentials"
+      unset PLEX_TOKEN
+      recreate_exporter
+    fi
   else
     echo "Plex pod '${POD_NAME}' is already running."
   fi
@@ -161,6 +188,7 @@ fi
 
 # --- Validate external mounts ---
 for mount_path in "$PLEX_MEDIA_DIR" "$PLEX_SEAGATE_DIR"; do
+  [[ -z "$mount_path" ]] && continue
   if ! mountpoint -q "$mount_path"; then
     echo "ERROR: $mount_path is not mounted. Refusing to start Plex." >&2
     exit 1
@@ -173,6 +201,8 @@ mkdir -p "$PLEX_CONFIG_DIR" "$PLEX_TRANSCODE_DIR"
 # --- Create Pod if missing ---
 if ! pod_exists; then
   echo "Creating Podman pod '${POD_NAME}'..."
+  # --network host makes all containers in this pod share the host network namespace;
+  # individual containers do not need their own --network flag.
   podman pod create \
     --name "$POD_NAME" \
     --network host
