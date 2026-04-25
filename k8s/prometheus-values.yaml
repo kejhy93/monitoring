@@ -3,6 +3,14 @@ grafana:
 
 prometheus:
   prometheusSpec:
+    retention: 30d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 35Gi
     resources:
       limits:
         memory: 512Mi
