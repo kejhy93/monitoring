@@ -68,6 +68,10 @@ echo "==> Applying Grafana dashboards..."
 kubectl apply -f "$K8S_DIR/plex-dashboard.yaml"
 kubectl apply -f "$K8S_DIR/metro-timetable-dashboard.yaml"
 
+echo "==> Restarting Grafana to pick up updated ConfigMaps..."
+kubectl rollout restart deployment/prometheus-grafana -n monitoring
+kubectl rollout status deployment/prometheus-grafana -n monitoring --timeout=120s
+
 if [[ "$ENV" == "prod" ]]; then
   echo "==> Applying Grafana Ingress..."
   kubectl apply -f "$K8S_DIR/grafana-ingress.yaml"
