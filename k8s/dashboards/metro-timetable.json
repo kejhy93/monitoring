@@ -2685,7 +2685,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "timetable_cache_trips_total{namespace=\"$namespace\"}",
+          "expr": "timetable_cache_trips{namespace=\"$namespace\"}",
           "legendFormat": "Trips in Cache",
           "range": true,
           "refId": "A"

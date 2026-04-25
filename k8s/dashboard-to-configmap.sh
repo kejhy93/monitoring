@@ -32,8 +32,8 @@ MINIFIED="$(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.arg
 # Grafana dashboard ConfigMap — generated from $(basename "$INPUT") by $(basename "$0").
 # Applied by deploy.sh — do not apply in isolation (namespace must exist first).
 #
-# The grafana-sc-dashboard sidecar watches ConfigMaps with grafana_dashboard=1
-# and loads them automatically into Grafana without a pod restart.
+# The grafana-sc-dashboard sidecar watches ConfigMaps with grafana_dashboard=1.
+# deploy.sh restarts the Grafana pod after applying these to ensure they are loaded.
 apiVersion: v1
 kind: ConfigMap
 metadata:
