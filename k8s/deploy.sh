@@ -55,6 +55,56 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   --set "grafana.grafana\.ini.server.root_url=${GRAFANA_ROOT_URL}" \
   --set "grafana.grafana\.ini.server.serve_from_sub_path=${SERVE_FROM_SUBPATH}"
 
+echo "==> Adding grafana helm repo..."
+if ! helm repo list | awk 'NR>1 {print $1}' | grep -qx "grafana"; then
+  helm repo add grafana https://grafana.github.io/helm-charts
+fi
+helm repo update
+
+echo "==> Installing Loki..."
+if [[ "$ENV" == "prod" ]]; then
+  helm upgrade --install loki grafana/loki \
+    --namespace monitoring \
+    --set deploymentMode=SingleBinary \
+    --set loki.auth_enabled=false \
+    --set singleBinary.replicas=1 \
+    --set read.replicas=0 \
+    --set write.replicas=0 \
+    --set backend.replicas=0 \
+    --set loki.storage.type=filesystem \
+    --set loki.commonConfig.replication_factor=1 \
+    --set singleBinary.persistence.enabled=true \
+    --set singleBinary.persistence.size=10Gi \
+    --set loki.limits_config.retention_period=720h \
+    --set loki.compactor.retention_enabled=true \
+    --set loki.schemaConfig.configs[0].from=2024-01-01 \
+    --set loki.schemaConfig.configs[0].store=tsdb \
+    --set loki.schemaConfig.configs[0].object_store=filesystem \
+    --set loki.schemaConfig.configs[0].schema=v13 \
+    --set loki.schemaConfig.configs[0].index.prefix=loki_ \
+    --set loki.schemaConfig.configs[0].index.period=24h
+else
+  helm upgrade --install loki grafana/loki \
+    --namespace monitoring \
+    --set deploymentMode=SingleBinary \
+    --set loki.auth_enabled=false \
+    --set singleBinary.replicas=1 \
+    --set read.replicas=0 \
+    --set write.replicas=0 \
+    --set backend.replicas=0 \
+    --set loki.storage.type=filesystem \
+    --set loki.commonConfig.replication_factor=1 \
+    --set singleBinary.persistence.enabled=false \
+    --set loki.useTestSchema=true \
+    --set-json 'singleBinary.extraVolumes=[{"name":"loki-data","emptyDir":{}}]' \
+    --set-json 'singleBinary.extraVolumeMounts=[{"name":"loki-data","mountPath":"/var/loki"}]'
+fi
+
+echo "==> Installing Promtail..."
+helm upgrade --install promtail grafana/promtail \
+  --namespace monitoring \
+  --set config.clients[0].url=http://loki:3100/loki/api/v1/push
+
 echo "==> Waiting for monitoring pods to be ready..."
 kubectl --namespace monitoring wait --for=condition=ready pod \
   -l "release=prometheus" \

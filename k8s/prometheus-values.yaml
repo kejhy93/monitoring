@@ -1,5 +1,10 @@
 grafana:
   adminPassword: admin
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki:3100
+      access: proxy
 
 prometheus:
   prometheusSpec:
