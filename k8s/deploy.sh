@@ -83,7 +83,9 @@ if [[ "$ENV" == "prod" ]]; then
     --set loki.schemaConfig.configs[0].object_store=filesystem \
     --set loki.schemaConfig.configs[0].schema=v13 \
     --set loki.schemaConfig.configs[0].index.prefix=loki_ \
-    --set loki.schemaConfig.configs[0].index.period=24h
+    --set loki.schemaConfig.configs[0].index.period=24h \
+    --set chunksCache.enabled=false \
+    --set resultsCache.enabled=false
 else
   helm upgrade --install loki grafana/loki \
     --namespace monitoring \
@@ -97,6 +99,8 @@ else
     --set loki.commonConfig.replication_factor=1 \
     --set singleBinary.persistence.enabled=false \
     --set loki.useTestSchema=true \
+    --set chunksCache.enabled=false \
+    --set resultsCache.enabled=false \
     --set-json 'singleBinary.extraVolumes=[{"name":"loki-data","emptyDir":{}}]' \
     --set-json 'singleBinary.extraVolumeMounts=[{"name":"loki-data","mountPath":"/var/loki"}]'
 fi
