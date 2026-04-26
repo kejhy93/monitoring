@@ -55,6 +55,28 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   --set "grafana.grafana\.ini.server.root_url=${GRAFANA_ROOT_URL}" \
   --set "grafana.grafana\.ini.server.serve_from_sub_path=${SERVE_FROM_SUBPATH}"
 
+echo "==> Adding grafana helm repo..."
+if ! helm repo list | awk 'NR>1 {print $1}' | grep -qx "grafana"; then
+  helm repo add grafana https://grafana.github.io/helm-charts
+fi
+helm repo update
+
+echo "==> Installing Loki + Promtail..."
+if [[ "$ENV" == "prod" ]]; then
+  helm upgrade --install loki grafana/loki-stack \
+    --namespace monitoring \
+    --set grafana.enabled=false \
+    --set loki.persistence.enabled=true \
+    --set loki.persistence.size=10Gi \
+    --set loki.config.limits_config.retention_period=720h \
+    --set loki.config.compactor.retention_enabled=true
+else
+  helm upgrade --install loki grafana/loki-stack \
+    --namespace monitoring \
+    --set grafana.enabled=false \
+    --set loki.persistence.enabled=false
+fi
+
 echo "==> Waiting for monitoring pods to be ready..."
 kubectl --namespace monitoring wait --for=condition=ready pod \
   -l "release=prometheus" \
