@@ -77,6 +77,7 @@ if [[ "$ENV" == "prod" ]]; then
     --set singleBinary.persistence.size=10Gi \
     --set loki.limits_config.retention_period=720h \
     --set loki.compactor.retention_enabled=true \
+    --set loki.compactor.delete_request_store=filesystem \
     --set loki.schemaConfig.configs[0].from=2024-01-01 \
     --set loki.schemaConfig.configs[0].store=tsdb \
     --set loki.schemaConfig.configs[0].object_store=filesystem \
