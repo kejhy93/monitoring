@@ -2995,10 +2995,11 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
+        "fontSize": "xs",
         "prettifyLogMessage": false,
         "showCommonLabels": false,
         "showLabels": false,
-        "showTime": true,
+        "showTime": false,
         "sortOrder": "Descending",
         "wrapLogMessage": false
       },
@@ -3009,6 +3010,42 @@
             "uid": "${DS_LOKI}"
           },
           "expr": "{namespace=~\"$namespace\", app=\"metro-timetable\"} | json",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "type": "logs",
+      "title": "Warning & Error Logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 120
+      },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "fontSize": "xs",
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": false,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "expr": "{namespace=~\"$namespace\", app=\"metro-timetable\"} | json | level=~`WARN|ERROR`",
           "refId": "A"
         }
       ]
@@ -3082,6 +3119,6 @@
   "timezone": "browser",
   "title": "Metro Timetable",
   "uid": "fejdv7am1p24ge",
-  "version": 15,
+  "version": 17,
   "weekStart": ""
 }
