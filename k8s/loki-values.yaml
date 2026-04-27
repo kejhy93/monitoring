@@ -1,0 +1,28 @@
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  storage:
+    type: filesystem
+  commonConfig:
+    replication_factor: 1
+
+singleBinary:
+  replicas: 1
+
+read:
+  replicas: 0
+
+write:
+  replicas: 0
+
+backend:
+  replicas: 0
+
+# Both caches require a Memcached sidecar. Disabled here because this is a
+# single-binary, single-replica deployment where the overhead isn't justified.
+chunksCache:
+  enabled: false
+
+resultsCache:
+  enabled: false

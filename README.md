@@ -1,13 +1,15 @@
 # Monitoring
 
-Prometheus + Grafana deployed in minikube (kube-prometheus-stack Helm chart), Plex running in a Podman pod on the host.
+Prometheus + Grafana + Loki deployed in minikube/k3s (kube-prometheus-stack + Loki Helm charts), Plex running in a Podman pod on the host.
 
 ## Stack
 
 | Component | Where | How |
 |---|---|---|
-| Prometheus | minikube, `monitoring` namespace | kube-prometheus-stack Helm chart |
-| Grafana | minikube, `monitoring` namespace | bundled with kube-prometheus-stack |
+| Prometheus | k8s, `monitoring` namespace | kube-prometheus-stack Helm chart |
+| Grafana | k8s, `monitoring` namespace | bundled with kube-prometheus-stack |
+| Loki | k8s, `monitoring` namespace | grafana/loki Helm chart (SingleBinary mode) |
+| Promtail | k8s, `monitoring` namespace | grafana/promtail Helm chart; ships pod logs to Loki |
 | Plex | Podman pod `plexpod` | `start-plex-exporter.sh` (GPU auto-detected; override with `GPU_TYPE`) |
 | plex-exporter | Podman pod `plexpod` (sidecar) | `ghcr.io/jsclayton/prometheus-plex-exporter` |
 | Seagate (media) | Host at `/var/mnt/seagate` | `fix-seagate-mount.sh` (NTFS, mounted into Plex at `/seagate`) |
@@ -35,10 +37,44 @@ bash k8s/deploy.sh --env prod    # k3s at hejnaluk.dev/grafana
 
 `deploy.sh` runs in order:
 1. Adds prometheus-community Helm repo and installs kube-prometheus-stack (using `k8s/prometheus-values.yaml`)
-2. Waits for pods to be ready
-3. Applies `k8s/plex-dashboard.yaml` and `k8s/metro-timetable-dashboard.yaml` (Grafana dashboard ConfigMaps)
-4. Applies `k8s/grafana-ingress.yaml` (prod only)
-5. For `--env local`: automatically starts `kubectl port-forward` on `http://localhost:3000` (loops on disconnect)
+2. Adds grafana Helm repo and installs Loki in SingleBinary mode (using `k8s/loki-values.yaml` + `k8s/loki-values-{env}.yaml`)
+3. Installs Promtail, configured to push logs to Loki
+4. Waits for pods to be ready
+5. Applies `k8s/plex-dashboard.yaml` and `k8s/metro-timetable-dashboard.yaml` (Grafana dashboard ConfigMaps)
+6. Applies `k8s/grafana-ingress.yaml` (prod only)
+7. For `--env local`: automatically starts `kubectl port-forward` on `http://localhost:3000` (loops on disconnect)
+
+## Loki log aggregation
+
+Loki runs in SingleBinary mode (one replica, filesystem storage). Promtail runs as a DaemonSet and ships all pod logs from the `monitoring` namespace to Loki. Grafana has Loki pre-configured as a datasource via `k8s/prometheus-values.yaml`.
+
+### Helm values layout
+
+Loki config is split across three files to avoid a long list of `--set` flags in `deploy.sh`:
+
+| File | Purpose |
+|---|---|
+| `k8s/loki-values.yaml` | Shared base config (SingleBinary mode, filesystem storage, caches disabled) |
+| `k8s/loki-values-prod.yaml` | Prod overrides: persistent volume (10Gi), 30-day retention, TSDB schema |
+| `k8s/loki-values-local.yaml` | Local overrides: ephemeral `emptyDir` storage, test schema |
+
+Both `chunksCache` and `resultsCache` are disabled in all environments — they require a Memcached sidecar that adds overhead not justified for a single-binary, single-replica setup.
+
+### Querying logs in Grafana
+
+Loki datasource URL: `http://loki:3100` (cluster-internal).
+
+Example LogQL queries:
+```logql
+# All logs from a pod
+{namespace="monitoring", pod=~"metro-timetable.*"}
+
+# Filter to errors only
+{namespace="monitoring", pod=~"metro-timetable.*"} |= "ERROR"
+
+# Error rate over time
+sum(rate({namespace="monitoring", pod=~"metro-timetable.*"} |= "ERROR" [5m]))
+```
 
 ## Helper scripts
 
@@ -186,6 +222,25 @@ To update the dashboard after editing `metro-timetable.json`:
 bash k8s/dashboard-to-configmap.sh k8s/dashboards/metro-timetable.json
 kubectl apply -f k8s/metro-timetable-dashboard.yaml
 ```
+
+### Dashboard panels
+
+**JVM / Runtime rows** — Heap memory (Eden, Tenured Gen, Survivor), non-heap (Metaspace), GC pause rate and duration, CPU usage, live threads, loaded classes
+
+**HTTP row** — Request rate (req/s), average response time, client version distribution
+
+**Parse timetable / Station query rows** — Latency timeseries for key application operations
+
+**GTFS Download row** — Download duration, download rate by result
+
+**Timetable Cache & Refresh row** — Cache age (stat), trips in cache (stat), refresh rate timeseries
+
+**Trip Query row** — Trip query latency
+
+**Logs row** (powered by Loki)
+- Error Log Rate — timeseries of error log frequency over time
+- Application Logs — full log stream panel for live tail / exploration
+- Warning & Error Logs — filtered log panel showing only `WARN` and `ERROR` entries
 
 ### Known issue: sidecar 401 on reload
 
