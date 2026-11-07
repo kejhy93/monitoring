@@ -1,0 +1,74 @@
+# Phone-as-5G-router monitoring: phone (ADB) + internet probes -> Prometheus -> Grafana.
+# Runs the same with `podman compose` (laptop) and `docker compose` (Raspberry Pi).
+# Everything uses host networking so the exporter can find the phone as the
+# default gateway and ICMP probes work without extra privileges.
+name: phone-router
+
+services:
+  phone-exporter:
+    build: ./exporter
+    image: localhost/phone-exporter:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PHONE_ADB_TARGET: ${PHONE_ADB_TARGET:-auto}
+      COLLECT_INTERVAL: "15"
+      LISTEN_PORT: "9200"
+      SD_FILE: /sd/gateway.json
+    volumes:
+      - ./data/adb:/root/.android:z   # ADB key the phone has authorised
+      - ./data/sd:/sd:z
+      # On the Pi with the phone plugged in over USB, uncomment and set PHONE_ADB_TARGET=usb:
+      # - /dev/bus/usb:/dev/bus/usb
+    # privileged: true
+
+  blackbox:
+    image: docker.io/prom/blackbox-exporter:v0.27.0
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+      - --web.listen-address=127.0.0.1:9116
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro,z
+
+  # Opt-in: every run downloads/uploads a few hundred MB of mobile data.
+  # Enable with: ./up.sh --profile speedtest
+  speedtest:
+    image: docker.io/miguelndecarvalho/speedtest-exporter:latest
+    restart: unless-stopped
+    network_mode: host
+    profiles: [speedtest]
+    environment:
+      SPEEDTEST_PORT: "9798"
+
+  prometheus:
+    image: docker.io/prom/prometheus:v3.5.0
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${RETENTION:-180d}
+      - --web.listen-address=${PROMETHEUS_LISTEN:-127.0.0.1:9095}
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
+      - ./data/sd:/etc/prometheus/sd:ro,z
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: docker.io/grafana/grafana:11.6.0
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:-3030}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/phone-router.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro,z
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro,z
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  grafana-data:
